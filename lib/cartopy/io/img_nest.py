@@ -17,9 +17,9 @@
 
 
 import collections
-import os
-import itertools
 import glob
+import itertools
+import os.path
 
 import numpy
 from PIL import Image
@@ -28,7 +28,7 @@ from shapely.geometry import box
 
 class Img(collections.namedtuple('Img', ['filename', 'extent', 'origin', 'pixel_size'])):
     """
-    Represents a simple geolocated image.
+    Represents a simple geo-located image.
 
     Note: API is likely to change in the future to include a CRS.
 
@@ -59,16 +59,35 @@ class Img(collections.namedtuple('Img', ['filename', 'extent', 'origin', 'pixel_
 
 
 class ImageCollection(object):
-    """
-    Represents a collection of images at the same logical level (typically zoom level).
-    """
     def __init__(self, name, crs, images=None):
+        """
+        Represents a collection of images at the same logical level.
+
+        Typically these are images at the same zoom level or resolution.
+
+        Args:
+
+        * name:
+            The name of the image collection.
+
+        * crs:
+            The :class:`~cartopy.crs.Projection` instance.
+
+        Kwargs:
+
+        * images:
+            A list of one or more :class:`~cartopy.io.img_nest.Img` instances.
+
+        """
+
         self.name = name
         self.crs = crs
         self.images = images or []
 
     def find_images(self, target_domain):
         """
+        XXX DELETE ME - not used!
+
         Find the images which exist in this collection which intersect with the target domain.
 
         Target domain is a shapely polygon in native coordinates.
@@ -80,27 +99,56 @@ class ImageCollection(object):
 
     def scan_dir_for_imgs(self, directory, glob_pattern='*.tif'):
         """
-        Scan the given directory for images with associated tfw files.
-        Append any found results to self.images
+        Search the given directory for the associated world files
+        of the image files.
 
-        .. note:: Does not recursively look through directories.
+        Args:
+        
+        * directory:
+            The directory path to search for image files.
+
+        Kwargs:
+
+        * glob_pattern:
+            The image filename glob pattern to search with.
+            Defaults to '*.tif'.
+
+        .. note:: Does not recursively search sub-directories.
 
         """
+        def world_extensions(fname):
+            """
+            Determine the world extensions of the given filename
+
+            For example, a '*.tif' file may have one of the following
+            popular world file extensions "*.tifw' or '*.tfw'.
+
+            """
+            froot, fext = os.path.splitext(fname)
+            if froot == fname:
+                result = ['{}.{}'.format(fname, 'w')]
+            else:
+                fext = fext[1::]
+                if len(fext) < 3:
+                    result = ['{}{}'.format(fname, 'w')]
+                else:
+                    result = ['{}.{}'.format(froot, ext) for ext in [fext + 'w', fext[0] + fext[-1] + 'w']]
+            return result
+
         imgs = glob.glob(os.path.join(directory, glob_pattern))
 
-        # maps tilename to [bbox_poly, [children]]
-        tiles = {}
         for img in imgs:
             dirname, fname = os.path.split(img)
-            orig_tfw = fname[:-3] + 'tfw'
-            for tfw in [orig_tfw, orig_tfw.upper()]:
-                tfw = os.path.join(dirname, tfw)
-                if os.path.exists(tfw):
+            worlds = world_extensions(fname)
+            worlds.extend([fworld.upper() for fworld in worlds])
+            for fworld in worlds:
+                fworld = os.path.join(dirname, fworld)
+                if os.path.exists(fworld):
                     break
             else:
-                raise ValueError('Image %s has no tfw' % img)
+                raise ValueError('Image file %s has no associated world file' % img)
 
-            lines = open(tfw).readlines()
+            lines = open(fworld).readlines()
             pix_size = [float(lines[0]), float(lines[3])]
             pix_rotation = [float(lines[1]), float(lines[2])]
             assert pix_rotation == [0., 0.], 'Rotated pixels not currently supported. Image: %s' % img
@@ -116,28 +164,42 @@ class ImageCollection(object):
             self.images.append(Img(img, self._extent_finalize(extent, img), 'lower', tuple(pix_size)))
 
     def _extent_finalize(self, extent, filename):
-        """The final extent of an image is passed through this method. This
-        is a good place to implement rounding or some other processing."""
+        """
+        The final extent of an image is passed through this method. This
+        is a good place to implement rounding or some other processing.
+
+        """
         return extent
 
 
 class NestedImageCollection(object):
-    """
-    Represents a complex nest of ImageCollections.
-
-    On construction, the image collections are scanned for ancestry, leading
-    to fast image finding capabilities.
-
-    A complex (and time consuming to create) NestedImageCollection instance can
-    be saved as a pickle file and subsequently be (quickly) restored.
-
-    There is a simplified creation interface for NestedImageCollection
-    ``from_configuration`` for more detail.
-
-    """
     def __init__(self, name, crs, collections, _ancestry=None):
+        """
+        Represents a complex nest of ImageCollections.
+
+        On construction, the image collections are scanned for ancestry, leading
+        to fast image finding capabilities.
+
+        A complex (and time consuming to create) NestedImageCollection instance can
+        be saved as a pickle file and subsequently be (quickly) restored.
+
+        There is a simplified creation interface for NestedImageCollection
+        ``from_configuration`` for more detail.
+
+        Args:
+
+        * name:
+            The name of the nested image collection.
+
+        * crs:
+            The native :class:`~cartopy.crs.Projection` of all the image collections.
+
+        * collections:
+            A list of one or more :class:`~cartopy.io.img_nest.ImageCollection` instances.
+
+        """
         # NOTE: all collections must have the same crs.
-        _collection_names = [collection.name for collection in collections]
+        _collection_names = set([collection.name for collection in collections])
         assert len(_collection_names) == len(collections), \
                'The collections must have unique names.'
 
@@ -170,6 +232,23 @@ class NestedImageCollection(object):
         return potential_parent_image.bbox().contains(image.bbox())
 
     def image_for_domain(self, target_domain, target_z):
+        """
+        
+        Args:
+
+        * target_domain:
+            A bounded rectangular :class:`~shapely.geometry.Polygon` instance that
+            specifies the target location that requires image coverage.
+
+        * target_z:
+            The name of the target :class:`~cartopy.io.img_nest.ImageCollection`
+            which specifies the target zoom level (resolution) of the required
+            images.
+
+        Returns:
+            
+
+        """
         # XXX Copied from cartopy.io.img_tiles
         if target_z not in self._collections_by_name:
             # TODO: Handle integer depths also?
@@ -193,6 +272,31 @@ class NestedImageCollection(object):
         return img, extent, origin
 
     def find_images(self, target_domain, target_z, start_tiles=None):
+        """
+        A generator that finds all images that intersect the bounded target location.
+        
+        Args:
+
+        * target_domain:
+            A bounded rectangular :class:`~shapely.geometry.Polygon` instance that
+            specifies the target location that requires image coverage.
+
+        * target_z:
+            The name of the target :class:`~cartopy.io.img_nest.ImageCollection`
+            which specifies the target zoom level (resolution) of the required images.
+
+        Kwargs:
+
+        * start_tiles:
+            A list of one or more tuple pairs, composed of a :class:`~cartopy.io.img_nest.ImageCollection` 
+            name and an :class:`~cartopy.io.img_nest.Img` instance, from which to search
+            for the target images.
+
+        Yields:
+            A tuple pair composed of a :class:`~cartopy.io.img_nest.ImageCollection` name
+            and an :class:`~cartopy.io.img_nest.Img` instance.
+
+        """
         # XXX Copied from cartopy.io.img_tiles
         if target_z not in self._collections_by_name:
             # TODO: Handle integer depths also?
@@ -213,10 +317,44 @@ class NestedImageCollection(object):
                             yield result
 
     def subtiles(self, collection_image):
+        """
+        Find the higher resolution image tiles that compose this parent image tile.
+
+        Args:
+
+        * collection_image:
+            A tuple pair containing the parent :class:`~cartopy.io.img_nest.ImageCollection` name
+            and :class:`~cartopy.io.img_nest.Img` instance.
+
+        Returns:
+            An iterator of tuple pairs containing the higher resolution child
+            :class:`~cartopy.io.img_nest.ImageCollection` name and :class:`~cartopy.io.img_nest.Img`
+            instance that compose the parent.
+
+        """
         return iter(self._ancestry.get(collection_image, []))
 
     desired_tile_form = 'RGB'
     def get_image(self, collection_image):
+        """
+        Retrieve the data of the target image from file.
+
+        .. note::
+            The format of the retrieved image file data is controlled by
+            :attr:`~cartopy.io.img_nest.NestedImageCollection.desired_tile_form`, 
+            which defaults to 'RGB' format.
+
+        Args:
+
+        * collection_image:
+            A tuple pair containing the target :class:`~cartopy.io.img_nest.ImageCollection` name
+            and :class:`~cartopy.io.img_nest.Img` instance.
+
+        Returns:
+            A tuple containing three items, consisting of the associated image file data, the
+            (x_lower, x_upper, y_lower, y_upper) extent of the image, and the image origin.
+
+        """
         img = collection_image[1]
         img_data = Image.open(img.filename)
         img_data = img_data.convert(self.desired_tile_form)
@@ -227,19 +365,48 @@ class NestedImageCollection(object):
                            glob_pattern='*.tif', img_collection_cls=ImageCollection,
                            ):
         """
-        Creates a NestedImageCollection given the [collection name, directory] pairs.
+        Creates a :class:`~cartopy.io.img_nest.NestedImageCollection` instance given the 
+        list of image collection name and directory path pairs.
+
         This is very convenient functionality for simple configuration level creation
         of this complex object.
 
         For example, to produce a nested collection of OS map tiles::
 
-            r = NestedImageCollection.from_configuration('os',
-                                                 ccrs.OSGB(),
-                                                 [['OS 1:1,000,000', '/directory/to/1_to_1m'],
-                                                  ['OS 1:250,000', '/directory/to/1_to_250k'],
-                                                  ['OS 1:50,000', '/directory/to/1_to_50k'],
-                                                  ],
-                                                 )
+            nest = NestedImageCollection.from_configuration('os',
+                                                            ccrs.OSGB(),
+                                                            [['OS 1:1,000,000', '/directory/to/1_to_1m'],
+                                                             ['OS 1:250,000', '/directory/to/1_to_250k'],
+                                                             ['OS 1:50,000', '/directory/to/1_to_50k'],
+                                                            ])
+
+        .. important::
+            The list of image collection name and directory path pairs must be given
+            in increasing resolution order i.e. from low resolution to high resolution.
+
+        Args:
+
+        * name:
+            The name for the :class:`~cartopy.io.img_nest.NestedImageCollection` instance.
+
+        * crs:
+            The :class:`~cartopy.crs.Projection` of the image collection.
+
+        * name_dir_pairs:
+            A list of image collection name and directory path pairs.
+       
+        Kwargs:
+
+        * glob_pattern:
+            The image collection filename glob pattern. 
+            Defaults to '*.tif'.
+
+        * img_collection_cls:
+            The class of image collection to nest. 
+            Defaults to :class:`~cartopy.io.img_nest.ImageCollection`.
+
+        Returns:
+            A :class:`~cartopy.io.img_nest.NestedImageCollection` instance.
 
         """
         collections = []

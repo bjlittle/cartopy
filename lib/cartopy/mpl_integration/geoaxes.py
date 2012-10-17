@@ -23,11 +23,13 @@ plot results from source coordinates to the GeoAxes' target projection.
 """ 
 
 import matplotlib.axes
+import matplotlib.collections as mcollections
 from matplotlib.image import imread
-import matplotlib.transforms as mtransforms
 import matplotlib.patches as mpatches
 import matplotlib.path as mpath
-import matplotlib.collections as mcollections
+import matplotlib.patheffects as mpl_path
+import matplotlib.transforms as mtransforms
+from mpl_toolkits.axes_grid.anchored_artists import AnchoredText
 import numpy
 import shapely.geometry
 
@@ -298,6 +300,40 @@ class GeoAxes(matplotlib.axes.Axes):
         ew = 'E' if lon >= 0.0 else 'W'
 
         return u'%.4g, %.4g (%f\u00b0%s, %f\u00b0%s)' % (x, y, abs(lat), ns, abs(lon), ew)
+
+    def citation(self, text, size=8, weight='bold', strokewidth=3, location=4):
+        """ 
+        Add an anchored text citation to the current axes.
+
+        Args:
+
+        * text:
+            Citation text to be plotted.
+
+        Kwargs:
+
+        * size:
+            Font size of the text. Defaults to a font size of 8.
+
+        * weight:
+            Font weight of the text. Defaults to a font weight of 'bold'.
+
+        * strokewidth:
+            Stroke font width of the path effect around the text.
+            Defaults to stroke width of 3.
+
+        * location:
+            Corner location for the citation text, where 1 is upper-right,
+            2 is upper-left, 3 is bottom-left, and 4 is bottom-right. Defaults
+            to bottom-right.
+
+        """
+
+        if text is not None and len(text):
+            anchor = AnchoredText(text, prop=dict(size=size, color='white', weight=weight), frameon=False, loc=location)
+            self.add_artist(anchor)
+            anchor_text = anchor.txt.get_children()[0]
+            anchor_text.set_path_effects([mpl_path.withStroke(linewidth=strokewidth, foreground='black')])
 
     def coastlines(self, resolution='110m', color='black', **kwargs):
         """
