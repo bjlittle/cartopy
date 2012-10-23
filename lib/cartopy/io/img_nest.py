@@ -27,12 +27,6 @@ from shapely.geometry import box
 
 
 class Img(collections.namedtuple('Img', ['filename', 'extent', 'origin', 'pixel_size'])):
-    """
-    Represents a simple geo-located image.
-
-    Note: API is likely to change in the future to include a CRS.
-
-    """
     def __new__(cls, *args, **kwargs):
         # ensure any lists given as args or kwargs are turned into tuples.
         new_args = []
@@ -48,6 +42,29 @@ class Img(collections.namedtuple('Img', ['filename', 'extent', 'origin', 'pixel_
         return super(Img, cls).__new__(cls, *new_args, **new_kwargs)
 
     def __init__(self, *args, **kwargs):
+        """
+        Represents a simple geo-located image.
+
+        Args:
+        
+        * filename:
+            Filename of the image tile.
+        
+        * extent:
+            The (x_lower, x_upper, y_lower, y_upper) extent of the image
+            in units of the native projection.
+        
+        * origin:
+            Name of the origin.
+        
+        * pixel_size:
+            The (x_scale, y_scale) pixel width, in units of the native
+            projection per pixel.
+
+        .. note:: 
+            API is likely to change in the future to include a CRS.
+
+        """
         r = super(Img, self).__init__(self, *args, **kwargs)
         self._bbox = None
 
@@ -113,15 +130,25 @@ class ImageCollection(object):
             The image filename glob pattern to search with.
             Defaults to '*.tif'.
 
-        .. note:: Does not recursively search sub-directories.
+        .. note:: 
+            Does not recursively search sub-directories.
 
         """
-        def world_extensions(fname):
+        def world_files(fname):
             """
-            Determine the world extensions of the given filename
+            Determine world filename combinations.
 
             For example, a '*.tif' file may have one of the following
-            popular world file extensions "*.tifw' or '*.tfw'.
+            popular conventions for world file extensions "*.tifw' or
+            '*.tfw'.
+
+            Args:
+
+            * fname:
+                Name of the file to world file combinations
+
+            Returns:
+                A list of world filename combinations.
 
             """
             froot, fext = os.path.splitext(fname)
@@ -139,7 +166,7 @@ class ImageCollection(object):
 
         for img in imgs:
             dirname, fname = os.path.split(img)
-            worlds = world_extensions(fname)
+            worlds = world_files(fname)
             worlds.extend([fworld.upper() for fworld in worlds])
             for fworld in worlds:
                 fworld = os.path.join(dirname, fworld)
@@ -233,12 +260,17 @@ class NestedImageCollection(object):
 
     def image_for_domain(self, target_domain, target_z):
         """
-        
+        Determine the image that provides complete coverage of target location.
+
+        The composed image is merged from one or more image tiles that overlay
+        the target location and provide complete image coverage of the target
+        location.
+
         Args:
 
         * target_domain:
-            A bounded rectangular :class:`~shapely.geometry.Polygon` instance that
-            specifies the target location that requires image coverage.
+            A :class:`~shapely.geometry.linestring.LineString` instance that
+            specifies the target location requiring image coverage.
 
         * target_z:
             The name of the target :class:`~cartopy.io.img_nest.ImageCollection`
@@ -246,7 +278,7 @@ class NestedImageCollection(object):
             images.
 
         Returns:
-            
+            A tuple containing three items, consisting of
 
         """
         # XXX Copied from cartopy.io.img_tiles
@@ -273,13 +305,13 @@ class NestedImageCollection(object):
 
     def find_images(self, target_domain, target_z, start_tiles=None):
         """
-        A generator that finds all images that intersect the bounded target location.
+        A generator that finds all images that overlap the bounded target location.
         
         Args:
 
         * target_domain:
-            A bounded rectangular :class:`~shapely.geometry.Polygon` instance that
-            specifies the target location that requires image coverage.
+            A :class:`~shapely.geometry.linestring.LineString` instance that
+            specifies the target location requiring image coverage.
 
         * target_z:
             The name of the target :class:`~cartopy.io.img_nest.ImageCollection`
@@ -305,10 +337,17 @@ class NestedImageCollection(object):
         if start_tiles is None:
             start_tiles = ((self._collections[0].name, img) for img in self._collections[0].images)
 
+        large = target_domain.envelope
+
         for start_tile in start_tiles:
             # recursively drill down to the images at the target zoom
             domain = start_tile[1].bbox()
-            if domain.intersects(target_domain):
+            small = domain
+            if small.area > large.area:
+                tmp = large
+                large = domain
+                small = tmp
+            if small.within(large) or small.overlaps(large):
                 if start_tile[0] == target_z:
                         yield start_tile
                 else:
