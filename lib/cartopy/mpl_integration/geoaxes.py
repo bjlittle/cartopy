@@ -218,6 +218,10 @@ class GeoAxes(matplotlib.axes.Axes):
         self._gridliners = []
         self.img_factories = []
         self._done_img_factory = False
+        self._anchored_text = AnchoredText('', prop=dict(size=8, weight='bold', color='white'), frameon=False, loc=4)
+        self.add_artist(self._anchored_text)
+        self.citation = self._anchored_text.txt.get_children()[0]
+        self.citation.set_path_effects([mpl_path.withStroke(linewidth=3, foreground='black')])
 
     def add_image(self, factory, *args, **kwargs):
         """
@@ -238,6 +242,8 @@ class GeoAxes(matplotlib.axes.Axes):
         """
         # XXX TODO: Needs working on
         self.img_factories.append([factory, args, kwargs])
+        if hasattr(factory, 'citation'):
+            self.add_citation(factory.citation)
 
     @matplotlib.axes.allow_rasterization
     def draw(self, renderer=None, inframe=False):
@@ -301,7 +307,7 @@ class GeoAxes(matplotlib.axes.Axes):
 
         return u'%.4g, %.4g (%f\u00b0%s, %f\u00b0%s)' % (x, y, abs(lat), ns, abs(lon), ew)
 
-    def citation(self, text, size=8, weight='bold', strokewidth=3, location=4):
+    def add_citation(self, text):
         """ 
         Add an anchored text citation to the current axes.
 
@@ -310,30 +316,14 @@ class GeoAxes(matplotlib.axes.Axes):
         * text:
             Citation text to be plotted.
 
-        Kwargs:
-
-        * size:
-            Font size of the text. Defaults to a font size of 8.
-
-        * weight:
-            Font weight of the text. Defaults to a font weight of 'bold'.
-
-        * strokewidth:
-            Stroke font width of the path effect around the text.
-            Defaults to stroke width of 3.
-
-        * location:
-            Corner location for the citation text, where 1 is upper-right,
-            2 is upper-left, 3 is bottom-left, and 4 is bottom-right. Defaults
-            to bottom-right.
-
         """
-
-        if text is not None and len(text):
-            anchor = AnchoredText(text, prop=dict(size=size, color='white', weight=weight), frameon=False, loc=location)
-            self.add_artist(anchor)
-            anchor_text = anchor.txt.get_children()[0]
-            anchor_text.set_path_effects([mpl_path.withStroke(linewidth=strokewidth, foreground='black')])
+        if text is not None and isinstance(text, basestring):
+            text = text.strip()
+            citation_text = self.citation.get_text()
+            if len(citation_text):
+                self.citation.set_text(citation_text + '\n{}'.format(text))
+            else:
+                self.citation.set_text(text)
 
     def coastlines(self, resolution='110m', color='black', **kwargs):
         """

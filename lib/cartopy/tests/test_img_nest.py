@@ -160,8 +160,8 @@ def gen_test_data():
             pix_size_y = y_rng / ny
             upper_left_center = extent[0] + pix_size_x/2, (extent[2] + pix_size_y/2)
 
-            tfw_fname = fname[:-4] + '.tfw'
-            open(tfw_fname, 'w').write('{}\n{}\n{}\n{}\n{}\n{}'.
+            pgw_fname = fname[:-4] + '.pgw'
+            open(pgw_fname, 'w').write('{}\n{}\n{}\n{}\n{}\n{}'.
                                        format(np.float32(pix_size_x),
                                               0, 0,
                                               np.float32(pix_size_y),

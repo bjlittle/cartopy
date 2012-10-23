@@ -200,7 +200,7 @@ class ImageCollection(object):
 
 
 class NestedImageCollection(object):
-    def __init__(self, name, crs, collections, _ancestry=None):
+    def __init__(self, name, crs, collections, _ancestry=None, citation=None):
         """
         Represents a complex nest of ImageCollections.
 
@@ -224,6 +224,11 @@ class NestedImageCollection(object):
         * collections:
             A list of one or more :class:`~cartopy.io.img_nest.ImageCollection` instances.
 
+        Kwargs:
+
+        * citation:
+            Textual citation associated with the provider of the image data.
+
         """
         # NOTE: all collections must have the same crs.
         _collection_names = set([collection.name for collection in collections])
@@ -236,6 +241,7 @@ class NestedImageCollection(object):
         self._collections = collections
         self._ancestry = {}
         """maps (collection name, image) to a list of children (collection name, image)."""
+        self.citation = citation
 
         tiles = {}
 
@@ -278,7 +284,9 @@ class NestedImageCollection(object):
             images.
 
         Returns:
-            A tuple containing three items, consisting of
+            A tuple containing three items, consisting of the target location
+            :class:`numpy.ndarray` image data, the (x-lower, x-upper, y-lower, y-upper)
+            extent of the image, and the origin for the target location.
 
         """
         # XXX Copied from cartopy.io.img_tiles
@@ -402,7 +410,7 @@ class NestedImageCollection(object):
     @classmethod
     def from_configuration(cls, name, crs, name_dir_pairs,
                            glob_pattern='*.tif', img_collection_cls=ImageCollection,
-                           ):
+                           citation=None):
         """
         Creates a :class:`~cartopy.io.img_nest.NestedImageCollection` instance given the 
         list of image collection name and directory path pairs.
@@ -444,6 +452,9 @@ class NestedImageCollection(object):
             The class of image collection to nest. 
             Defaults to :class:`~cartopy.io.img_nest.ImageCollection`.
 
+        * citation:
+            Textual citation associated with the provider of the image data.
+
         Returns:
             A :class:`~cartopy.io.img_nest.NestedImageCollection` instance.
 
@@ -453,4 +464,4 @@ class NestedImageCollection(object):
             collection = img_collection_cls(collection_name, crs)
             collection.scan_dir_for_imgs(collection_dir, glob_pattern=glob_pattern)
             collections.append(collection)
-        return cls(name, crs, collections)
+        return cls(name, crs, collections, citation=citation)
